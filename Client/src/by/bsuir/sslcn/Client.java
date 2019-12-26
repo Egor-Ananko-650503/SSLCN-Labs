@@ -1,31 +1,32 @@
 package by.bsuir.sslcn;
 
-import java.io.*;
+import by.bsuir.sslcn.IO.MessageSender;
+import by.bsuir.sslcn.IO.MessageTransmitter;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.HashSet;
 import java.util.Set;
-
-import by.bsuir.sslcn.IO.MessageSender;
-import by.bsuir.sslcn.IO.MessageTransmitter;
-import by.bsuir.sslcn.Message;
+import java.util.TreeSet;
 
 import static by.bsuir.sslcn.Constants.*;
 
 public class Client {
 
-    private static final String WORK_DIR = "D:\\Projects\\IdeaProjects\\Java\\SSLСN\\Lab_2\\Client\\res\\content\\";
-    private static final byte CLIENT_WIN_VALUE = 5;
+    private static final String WORK_DIR = "D:\\STUDY\\7 term\\SPOLKS\\Lab_2\\Client\\res\\content\\";
+    private static final byte CLIENT_WIN_VALUE = 10;
     private DatagramSocket clientSocket;
     private ClientInfo clientInfo = new ClientInfo();
 
-    private Set<Integer> sentMessages = new HashSet<>();
-    private Set<Integer> receivedMessages = new HashSet<>();
-    private Set<Integer> ackMessages = new HashSet<>();
+    private Set<Integer> sentMessages = new TreeSet<>();
+    private Set<Integer> receivedMessages = new TreeSet<>();
+    private Set<Integer> ackMessages = new TreeSet<>();
 
     public static void main(String[] args) throws Exception {
         Client client = new Client();
@@ -34,9 +35,9 @@ public class Client {
 
     public void runClient(String[] args) throws Exception {
         BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
-        clientInfo.ipAddress = InetAddress.getByName("25.107.253.63");
+        clientInfo.ipAddress = InetAddress.getByName("192.168.43.171");
         clientInfo.port = PORT;
-        clientSocket = new DatagramSocket(clientInfo.port, InetAddress.getByName("25.107.253.89"));
+        clientSocket = new DatagramSocket(clientInfo.port, InetAddress.getByName("192.168.43.34"));
 
         byte[] sendData = new byte[BUFFER_SIZE];
         byte[] receiveData = new byte[BUFFER_SIZE];
@@ -56,8 +57,7 @@ public class Client {
             String command = splittedCommand[0];
             String commandArgs = splittedCommand.length > 1 ? splittedCommand[1] : null;
 
-            switch (command.toUpperCase())
-            {
+            switch (command.toUpperCase()) {
                 case COMMAND_DOWNLOAD:
                     doDownload(commandArgs);
                     continue;
@@ -93,7 +93,7 @@ public class Client {
         int read = 0;
 
         clientSocket.setSoTimeout(1);
-        while(true) {
+        while (true) {
             try {
                 Message msg = MessageTransmitter.receiveMessage(clientSocket);
 
