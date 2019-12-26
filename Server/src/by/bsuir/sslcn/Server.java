@@ -13,7 +13,6 @@ import java.net.SocketTimeoutException;
 import java.nio.channels.FileChannel;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -82,6 +81,7 @@ public class Server {
                 doTime();
                 break;
             case COMMAND_UPLOAD:
+                doUpload(args);
                 break;
             case COMMAND_DOWNLOAD:
                 doDownload(args);
@@ -98,6 +98,53 @@ public class Server {
 
     private void doTime() throws IOException {
         sendString((new SimpleDateFormat("dd/MM/yyyy HH:mm:ss")).format(new Date()));
+    }
+
+    private void doUpload(String args) throws IOException {
+        String fileName = args.split(" ", 2)[0]; // TODO: check null
+
+        RandomAccessFile rafFile = new RandomAccessFile(WORK_DIR + fileName, "rw");
+        FileChannel fileChannel = rafFile.getChannel();
+
+        int seq = 1;
+        int read = 0;
+
+        serverSocket.setSoTimeout(1);
+        while (true) {
+            try {
+                Message msg = MessageTransmitter.receiveMessage(serverSocket);
+
+                if (msg.fin) break;
+
+                if (!receivedMessages.contains(msg.sequenceNumber)) {
+                    rafFile.seek(msg.sequenceNumber - 1);
+                    rafFile.write(msg.data);
+
+                    receivedMessages.add(msg.sequenceNumber);
+                }
+            } catch (SocketTimeoutException ignored) {
+            }
+
+            for (int ackNum : receivedMessages) {
+                sendAck(ackNum, SERVER_WIN_VALUE);
+            }
+            receivedMessages.clear();
+        }
+        serverSocket.setSoTimeout(0);
+
+        MessageSender.sendFin(serverSocket, clientInfo);
+
+        fileChannel.close();
+        rafFile.close();
+
+        receivedMessages.clear();
+
+        System.out.println("File transfer is ended");
+    }
+
+    private void sendAck(int ackNum, byte win) throws IOException {
+        Message msg = new Message(0, ackNum, true, win, false, new byte[0]);
+        MessageSender.sendMessage(serverSocket, clientInfo, msg);
     }
 
     private void doDownload(String args) throws IOException {
