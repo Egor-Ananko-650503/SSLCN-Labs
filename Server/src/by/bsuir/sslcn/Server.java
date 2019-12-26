@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.nio.channels.FileChannel;
 import java.text.SimpleDateFormat;
@@ -39,7 +40,7 @@ public class Server {
     public void runServer(String[] args) throws IOException {
         boolean running = true;
 
-        serverSocket = new DatagramSocket(PORT);
+        serverSocket = new DatagramSocket(PORT, InetAddress.getByName("25.107.253.63"));
 
         byte[] receiveData = new byte[BUFFER_SIZE];
         byte[] sendData = new byte[BUFFER_SIZE];
@@ -111,6 +112,7 @@ public class Server {
 
         int winMax = 1;
         int winFree = 1;
+        int winMin = 0;
 
         int seq = 1;
         int read = 0;
@@ -118,22 +120,40 @@ public class Server {
         boolean isFileEnd = false;
 
         serverSocket.setSoTimeout(1);
-        while ((!isFileEnd || !sentMessages.isEmpty())) {
-            if (!sentMessages.isEmpty() && winFree > 0) {
-                // TODO: winFree
+        while (!isFileEnd || !sentMessages.isEmpty()) {
+            if (!sentMessages.isEmpty()) {
                 long currPosition = rafFile.getFilePointer();
-
                 for (int seqForResend : sentMessages) {
                     rafFile.seek(seqForResend - 1);
                     read = rafFile.read(buffer);
+
                     Message msg = MessageSender.constructMessage(seqForResend, read, buffer);
                     sendMessage(msg);
+
                     winFree--;
+                    if (winFree <= winMin) break;
                 }
                 rafFile.seek(currPosition);
             }
 
-            while (!isFileEnd && winFree > 0) {
+            try {
+                while (true) {
+                    Message msgAck = MessageTransmitter.receiveMessage(serverSocket);
+                    winFree = (winFree < winMax ? winFree + 1 : winMax);
+
+                    if (msgAck.ack) {
+                        ackMessages.add(msgAck.acknowledgmentNumber);
+                        sentMessages.remove(msgAck.acknowledgmentNumber);
+                        if (winMax != msgAck.win) {
+                            winFree = Math.max(winFree + (msgAck.win - winMax), winMin);
+                            winMax = msgAck.win;
+                        }
+                    }
+                }
+            } catch (SocketTimeoutException ignored) {
+            }
+
+            while (!isFileEnd) {
                 read = rafFile.read(buffer);
                 if (read == -1) {
                     isFileEnd = true;
@@ -145,19 +165,22 @@ public class Server {
 
                 sentMessages.add(seq);
 
-                winFree--;
                 seq += read;
+
+                winFree--;
+                if (winFree <= winMin) break;
             }
 
             try {
-                while (winFree < winMax) {
+                while (true) {
                     Message msgAck = MessageTransmitter.receiveMessage(serverSocket);
+                    winFree = (winFree < winMax ? winFree + 1 : winMax);
+
                     if (msgAck.ack) {
                         ackMessages.add(msgAck.acknowledgmentNumber);
                         sentMessages.remove(msgAck.acknowledgmentNumber);
-                        winFree++;
                         if (winMax != msgAck.win) {
-                            winFree = Math.max(winFree + (msgAck.win - winMax), 0);
+                            winFree = Math.max(winFree + (msgAck.win - winMax), winMin);
                             winMax = msgAck.win;
                         }
                     }
@@ -169,7 +192,7 @@ public class Server {
 
         MessageSender.sendFin(serverSocket, clientInfo);
 
-        while (!MessageTransmitter.receiveMessage(serverSocket).fin);
+        while (!MessageTransmitter.receiveMessage(serverSocket).fin) ;
 
         fileChannel.close();
         rafFile.close();

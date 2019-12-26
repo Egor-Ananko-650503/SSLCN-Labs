@@ -34,9 +34,9 @@ public class Client {
 
     public void runClient(String[] args) throws Exception {
         BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
-        clientSocket = new DatagramSocket();
-        clientInfo.ipAddress = InetAddress.getByName("localhost");
+        clientInfo.ipAddress = InetAddress.getByName("25.107.253.63");
         clientInfo.port = PORT;
+        clientSocket = new DatagramSocket(clientInfo.port, InetAddress.getByName("25.107.253.89"));
 
         byte[] sendData = new byte[BUFFER_SIZE];
         byte[] receiveData = new byte[BUFFER_SIZE];
