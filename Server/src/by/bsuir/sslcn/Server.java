@@ -15,6 +15,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.TreeSet;
 
 import static by.bsuir.sslcn.Constants.*;
 
@@ -28,9 +29,9 @@ public class Server {
     private DatagramSocket serverSocket;
     private ClientInfo clientInfo = new ClientInfo();
 
-    private Set<Integer> sentMessages = new HashSet<>();
-    private Set<Integer> receivedMessages = new HashSet<>();
-    private Set<Integer> ackMessages = new HashSet<>();
+    private Set<Integer> sentMessages = new TreeSet<>();
+    private Set<Integer> receivedMessages = new TreeSet<>();
+    private Set<Integer> ackMessages = new TreeSet<>();
 
     public static void main(String[] args) throws Exception {
         Server server = new Server();
@@ -40,7 +41,7 @@ public class Server {
     public void runServer(String[] args) throws IOException {
         boolean running = true;
 
-        serverSocket = new DatagramSocket(PORT, InetAddress.getByName("25.107.253.63"));
+        serverSocket = new DatagramSocket(PORT, InetAddress.getByName("192.168.43.171"));
 
         byte[] receiveData = new byte[BUFFER_SIZE];
         byte[] sendData = new byte[BUFFER_SIZE];
@@ -130,8 +131,8 @@ public class Server {
                     Message msg = MessageSender.constructMessage(seqForResend, read, buffer);
                     sendMessage(msg);
 
-                    winFree--;
-                    if (winFree <= winMin) break;
+                    if (winFree > winMin) winFree--;
+                    else break;
                 }
                 rafFile.seek(currPosition);
             }
@@ -167,8 +168,8 @@ public class Server {
 
                 seq += read;
 
-                winFree--;
-                if (winFree <= winMin) break;
+                if (winFree > winMin) winFree--;
+                else break;
             }
 
             try {
