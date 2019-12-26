@@ -33,6 +33,10 @@ public class Server {
     private Set<Integer> receivedMessages = new TreeSet<>();
     private Set<Integer> ackMessages = new TreeSet<>();
 
+    private int winMax = 1;
+    private int winFree = 1;
+    private int winMin = 0;
+
     public static void main(String[] args) throws Exception {
         Server server = new Server();
         server.runServer(args);
@@ -111,9 +115,9 @@ public class Server {
         long length = rafFile.length();
         System.out.println("File length: " + length);
 
-        int winMax = 1;
-        int winFree = 1;
-        int winMin = 0;
+        winMax = 1;
+        winFree = 1;
+        winMin = 0;
 
         int seq = 1;
         int read = 0;
@@ -122,37 +126,9 @@ public class Server {
 
         serverSocket.setSoTimeout(1);
         while (!isFileEnd || !sentMessages.isEmpty()) {
-            if (!sentMessages.isEmpty()) {
-                long currPosition = rafFile.getFilePointer();
-                for (int seqForResend : sentMessages) {
-                    rafFile.seek(seqForResend - 1);
-                    read = rafFile.read(buffer);
+            resendMissed(rafFile, buffer);
 
-                    Message msg = MessageSender.constructMessage(seqForResend, read, buffer);
-                    sendMessage(msg);
-
-                    if (winFree > winMin) winFree--;
-                    else break;
-                }
-                rafFile.seek(currPosition);
-            }
-
-            try {
-                while (true) {
-                    Message msgAck = MessageTransmitter.receiveMessage(serverSocket);
-                    winFree = (winFree < winMax ? winFree + 1 : winMax);
-
-                    if (msgAck.ack) {
-                        ackMessages.add(msgAck.acknowledgmentNumber);
-                        sentMessages.remove(msgAck.acknowledgmentNumber);
-                        if (winMax != msgAck.win) {
-                            winFree = Math.max(winFree + (msgAck.win - winMax), winMin);
-                            winMax = msgAck.win;
-                        }
-                    }
-                }
-            } catch (SocketTimeoutException ignored) {
-            }
+            collectAcks();
 
             while (!isFileEnd) {
                 read = rafFile.read(buffer);
@@ -172,22 +148,7 @@ public class Server {
                 else break;
             }
 
-            try {
-                while (true) {
-                    Message msgAck = MessageTransmitter.receiveMessage(serverSocket);
-                    winFree = (winFree < winMax ? winFree + 1 : winMax);
-
-                    if (msgAck.ack) {
-                        ackMessages.add(msgAck.acknowledgmentNumber);
-                        sentMessages.remove(msgAck.acknowledgmentNumber);
-                        if (winMax != msgAck.win) {
-                            winFree = Math.max(winFree + (msgAck.win - winMax), winMin);
-                            winMax = msgAck.win;
-                        }
-                    }
-                }
-            } catch (SocketTimeoutException ignored) {
-            }
+            collectAcks();
         }
         serverSocket.setSoTimeout(0);
 
@@ -198,25 +159,51 @@ public class Server {
         fileChannel.close();
         rafFile.close();
 
+        winMax = 1;
+        winFree = 1;
+        winMin = 0;
+
         sentMessages.clear();
         ackMessages.clear();
 
         System.out.println("File transfer is ended");
     }
 
-    private void resendMissed(RandomAccessFile rafFile, byte[] buffer) throws IOException {
-        if (sentMessages.isEmpty()) return;
-        // TODO: winFree
-        int read;
-        long currPosition = rafFile.getFilePointer();
+    private void collectAcks() throws IOException {
+        try {
+            while (true) {
+                Message msgAck = MessageTransmitter.receiveMessage(serverSocket);
+                winFree = (winFree < winMax ? winFree + 1 : winMax);
 
-        for (int seqForResend : sentMessages) {
-            rafFile.seek(seqForResend - 1);
-            read = rafFile.read(buffer);
-            Message msg = MessageSender.constructMessage(seqForResend, read, buffer);
-            sendMessage(msg);
+                if (msgAck.ack) {
+                    ackMessages.add(msgAck.acknowledgmentNumber);
+                    sentMessages.remove(msgAck.acknowledgmentNumber);
+                    if (winMax != msgAck.win) {
+                        winFree = Math.max(winFree + (msgAck.win - winMax), winMin);
+                        winMax = msgAck.win;
+                    }
+                }
+            }
+        } catch (SocketTimeoutException ignored) {
         }
-        rafFile.seek(currPosition);
+    }
+
+    private void resendMissed(RandomAccessFile rafFile, byte[] buffer) throws IOException {
+        int read;
+        if (!sentMessages.isEmpty()) {
+            long currPosition = rafFile.getFilePointer();
+            for (int seqForResend : sentMessages) {
+                rafFile.seek(seqForResend - 1);
+                read = rafFile.read(buffer);
+
+                Message msg = MessageSender.constructMessage(seqForResend, read, buffer);
+                sendMessage(msg);
+
+                if (winFree > winMin) winFree--;
+                else break;
+            }
+            rafFile.seek(currPosition);
+        }
     }
 
     private File getFileFromWorkDir(String fileName) {
