@@ -2,7 +2,10 @@ package by.bsuir.sslcn;
 
 public class Constants {
 
+    public static final String LOCALHOST = "localhost";
     public static final int PORT = 7575;
+    public static final int CLIENT_LOCAL_PORT = 7576;
+
     public static final int BUFFER_SIZE = 1024;
     public static final int BUFFER_WITH_HEADER_SIZE = 1024 + Message.HEADER_SIZE;
 
