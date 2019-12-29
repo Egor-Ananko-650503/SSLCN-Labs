@@ -11,7 +11,13 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.nio.channels.FileChannel;
+import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.temporal.ChronoField;
+import java.time.temporal.TemporalField;
 import java.util.Date;
 import java.util.Set;
 import java.util.TreeSet;
@@ -109,8 +115,13 @@ public class Server {
         int seq = 1;
         int read = 0;
 
+        boolean isConnectionLost = false;
+        boolean isConnectionIssue = false;
+        long timeout = LocalTime.of(0, 1).getLong(ChronoField.MINUTE_OF_HOUR);
+        LocalTime lastSuccess = null;
+
         serverSocket.setSoTimeout(1);
-        while (true) {
+        while (!isConnectionLost) {
             try {
                 Message msg = MessageTransmitter.receiveMessage(serverSocket);
 
@@ -125,10 +136,21 @@ public class Server {
             } catch (SocketTimeoutException ignored) {
             }
 
-            for (int ackNum : receivedMessages) {
-                sendAck(ackNum, SERVER_WIN_VALUE);
+            if (!receivedMessages.isEmpty())
+            {
+                for (int ackNum : receivedMessages) {
+                    sendAck(ackNum, SERVER_WIN_VALUE);
+                }
+                receivedMessages.clear();
+                isConnectionIssue = false;
+            } else {
+                if (!isConnectionIssue) {
+                    isConnectionIssue = true;
+                    lastSuccess = LocalTime.now();
+                } else if (LocalTime.now().getLong(ChronoField.MINUTE_OF_DAY) - lastSuccess.getLong(ChronoField.MINUTE_OF_DAY) > timeout) {
+                    isConnectionLost = true;
+                }
             }
-            receivedMessages.clear();
         }
         serverSocket.setSoTimeout(0);
 
@@ -139,7 +161,12 @@ public class Server {
 
         receivedMessages.clear();
 
-        System.out.println("File transfer is ended");
+        if (isConnectionLost) {
+            System.out.println("Connection lost");
+            new File(WORK_DIR + fileName).delete();
+        } else {
+            System.out.println("File transfer is ended");
+        }
     }
 
     private void sendAck(int ackNum, byte win) throws IOException {
