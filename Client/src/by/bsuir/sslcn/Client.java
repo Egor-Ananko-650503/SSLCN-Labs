@@ -9,6 +9,8 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.nio.channels.FileChannel;
+import java.time.LocalTime;
+import java.time.temporal.ChronoField;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -18,6 +20,7 @@ public class Client {
 
     private static final String WORK_DIR = "D:\\STUDY\\7 term\\SPOLKS\\Lab_2\\Client\\res\\content\\";
     private static final byte CLIENT_WIN_VALUE = 10;
+    private static final int ATTEMPTS_MAX = 3;
     private DatagramSocket clientSocket;
     private ClientInfo clientInfo = new ClientInfo();
 
@@ -151,13 +154,40 @@ public class Client {
 
         boolean isFileEnd = false;
 
+        int attempts = 0;
+        boolean isConnectionIssue = false;
+        boolean isConnectionLost = false;
+        long timeout = LocalTime.of(0,0,18).getLong(ChronoField.MINUTE_OF_HOUR);
+        LocalTime lastSuccess = null;
+
         clientSocket.setSoTimeout(1);
-        while (!isFileEnd || !sentMessages.isEmpty()) {
+        while (!isConnectionLost && (!isFileEnd || !sentMessages.isEmpty())) {
             resendMissed(rafFile, buffer);
 
-            collectAcks();
+            // как на сервере, только timeout 18 сек и после него попытка отправить несколько пакетов.
+            // Если 3 раза ничего - connection lost
 
-            while (!isFileEnd) {
+//            collectAcks();
+            if (!collectAcks()) {
+                if (!isConnectionIssue) {
+                    isConnectionIssue = true;
+                    lastSuccess = LocalTime.now();
+                } else if (LocalTime.now().getLong(ChronoField.MINUTE_OF_DAY) - lastSuccess.getLong(ChronoField.MINUTE_OF_DAY) > timeout) {
+                    if (attempts++ < ATTEMPTS_MAX) {
+                        winFree = 5;
+                        resendMissed(rafFile, buffer);
+                        lastSuccess = LocalTime.now();
+                    } else {
+                        attempts = 0;
+                        isConnectionLost = true;
+                    }
+                }
+            } else {
+                attempts = 0;
+                isConnectionIssue = false;
+            }
+
+            while (!isFileEnd && winFree > winMin) {
                 read = rafFile.read(buffer);
                 if (read == -1) {
                     isFileEnd = true;
@@ -179,9 +209,15 @@ public class Client {
         }
         clientSocket.setSoTimeout(0);
 
-        MessageSender.sendFin(clientSocket, clientInfo);
+        if (!isConnectionLost){
+            MessageSender.sendFin(clientSocket, clientInfo);
 
-        while (!MessageTransmitter.receiveMessage(clientSocket).fin) ;
+            while (!MessageTransmitter.receiveMessage(clientSocket).fin) ;
+
+            System.out.println("File transfer is ended");
+        } else {
+            System.out.println("Connection lost");
+        }
 
         fileChannel.close();
         rafFile.close();
@@ -192,8 +228,6 @@ public class Client {
 
         sentMessages.clear();
         ackMessages.clear();
-
-        System.out.println("File transfer is ended");
     }
 
     private void sendAck(int ackNum, byte win) throws IOException {
@@ -201,7 +235,7 @@ public class Client {
         MessageSender.sendMessage(clientSocket, clientInfo, msg);
     }
 
-    private void collectAcks() throws IOException {
+    private boolean collectAcks() throws IOException {
         try {
             while (true) {
                 Message msgAck = MessageTransmitter.receiveMessage(clientSocket);
@@ -215,9 +249,13 @@ public class Client {
                         winMax = msgAck.win;
                     }
                 }
+
+                return true;
             }
         } catch (SocketTimeoutException ignored) {
         }
+
+        return false;
     }
 
     private void resendMissed(RandomAccessFile rafFile, byte[] buffer) throws IOException {
@@ -225,6 +263,8 @@ public class Client {
         if (!sentMessages.isEmpty()) {
             long currPosition = rafFile.getFilePointer();
             for (int seqForResend : sentMessages) {
+                if (winFree <= winMin) break;
+
                 rafFile.seek(seqForResend - 1);
                 read = rafFile.read(buffer);
 
@@ -232,7 +272,6 @@ public class Client {
                 sendMessage(msg);
 
                 if (winFree > winMin) winFree--;
-                else break;
             }
             rafFile.seek(currPosition);
         }
