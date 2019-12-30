@@ -1,7 +1,9 @@
 package by.bsuir.sslcn;
 
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Objects;
 
 public class Message {
 
@@ -15,6 +17,8 @@ public class Message {
     public byte win;
     public boolean fin;
     public byte[] data;
+
+    public InetSocketAddress target;
 
     public Message() {
         this(0, 0, false, DEFAULT_WIN_VALUE, DEFAULT_FIN_VALUE, new byte[0]);
@@ -78,5 +82,26 @@ public class Message {
                 + win + ' '
                 + fin + ' '
                 + Arrays.toString(data);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Message)) return false;
+        Message message = (Message) o;
+        return sequenceNumber == message.sequenceNumber &&
+                acknowledgmentNumber == message.acknowledgmentNumber &&
+                ack == message.ack &&
+                win == message.win &&
+                fin == message.fin &&
+                Arrays.equals(data, message.data) &&
+                Objects.equals(target, message.target);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(sequenceNumber, acknowledgmentNumber, ack, win, fin, target);
+        result = 31 * result + Arrays.hashCode(data);
+        return result;
     }
 }
