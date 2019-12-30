@@ -8,23 +8,21 @@ import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 import static by.bsuir.sslcn.Constants.*;
 
 public class AsyncServer {
 
-    public static final int RESPONSE_QUEUE_SIZE = 100;
     private static final String WRONG_COMMAND = "Wrong command!";
     private static final String WRONG_COMMAND_ARGUMENTS = "Wrong command arguments!";
     private static final String WORK_DIR = "D:\\Projects\\IdeaProjects\\Java\\SSLСN\\Lab_2\\Server\\res\\content\\";
     private static final byte SERVER_WIN_VALUE = 5;
+    public static final int CLIENTS_DEFAULT_SIZE = 10;
     private boolean bExit = false;
-    private List<Message> responseQueue = new ArrayList<Message>(RESPONSE_QUEUE_SIZE);
+
+    Set<Message> responseQueue = new LinkedHashSet<>();
+    List<ClientContainer> clients = new ArrayList<>(CLIENTS_DEFAULT_SIZE);
 
     public static void main(String[] args) {
         AsyncServer asyncServer = new AsyncServer();
@@ -59,11 +57,11 @@ public class AsyncServer {
 
                             if (key.isReadable()) {
                                 processRead(key);
-                                System.out.println("In readable block");
+//                                System.out.println("In readable block");
                             } else if (key.isWritable()) {
                                 if (!responseQueue.isEmpty()) {
                                     processWrite(key);
-                                    System.out.println("In writable block");
+//                                    System.out.println("In writable block");
                                 }
                             }
 
@@ -86,8 +84,12 @@ public class AsyncServer {
         DatagramChannel channel = (DatagramChannel) key.channel();
         Connection con = (Connection) key.attachment();
 
-        con.response = responseQueue.remove(0).getByteBufferData();
-        channel.send(con.response, con.socketAddress);
+        Iterator<Message> iterator = responseQueue.iterator();
+        if (iterator.hasNext()) {
+            Message msg = iterator.next();
+            iterator.remove();
+            channel.send(msg.getByteBufferData(), msg.target);
+        }
     }
 
     private void processRead(SelectionKey key) throws IOException {
@@ -98,59 +100,32 @@ public class AsyncServer {
         con.socketAddress = channel.receive(con.request);
         con.request.flip();
 
-        Message msg = Message.parseByteData(con.request);
-        String request = new String(msg.data != null ? msg.data : "".getBytes());
-        System.out.println("FROM CLIENT [" + con.socketAddress + "]: " + request);
+        ClientContainer client = findClientByAddress(con.socketAddress);
+        if (client == null) {
+            client = new ClientContainer(con.socketAddress);
+            clients.add(client);
+        }
 
-        if (request.equalsIgnoreCase(COMMAND_END)) {
+        List<Message> responseSet = client.parseDataPacket(con.request);
+
+        if (client.isEndCommand) {
             bExit = true;
-        } else {
-            parseRequest(request, channel, con);
         }
+
+        responseQueue.addAll(responseSet);
     }
 
-    private void parseRequest(String request, /*REMOVE*/ DatagramChannel channel, Connection con) {
-        String[] splittedCommand = request.split(" ", 2);
-        String command = splittedCommand[0];
-        String args = splittedCommand.length > 1 ? splittedCommand[1] : null;
-
-        switch (command.toUpperCase()) {
-            case COMMAND_ECHO:
-                doEcho(args, channel, con);
-                break;
-            case COMMAND_TIME:
-                doTime(channel, con);
-                break;
-            case COMMAND_UPLOAD:
-//                doUpload(args);
-                break;
-            case COMMAND_DOWNLOAD:
-//                doDownload(args);
-                break;
-            default:
-                addDefaultResponse(con, WRONG_COMMAND.getBytes());
-                break;
+    private ClientContainer findClientByAddress(SocketAddress address) {
+        for (ClientContainer clientContainer : clients) {
+            if (clientContainer.address.equals(address)) {
+                return clientContainer;
+            }
         }
+
+        return null;
     }
 
-    private void doTime(DatagramChannel channel, Connection con) {
-        String currentDate = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss").format(new Date());
-
-        addDefaultResponse(con, currentDate.getBytes());
-    }
-
-    private void doEcho(String args, DatagramChannel channel, Connection con) {
-        addDefaultResponse(con, (args != null ? args : WRONG_COMMAND_ARGUMENTS).getBytes());
-    }
-
-    private void addDefaultResponse(Connection con, byte[] bytes) {
-        Message msg = new Message();
-        msg.data = bytes;
-
-        responseQueue.add(msg);
-    }
-
-    private static class Connection {
+    public static class Connection {
         ByteBuffer request;
         ByteBuffer response;
         SocketAddress socketAddress;

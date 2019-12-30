@@ -11,13 +11,9 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.nio.channels.FileChannel;
-import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.ChronoField;
-import java.time.temporal.TemporalField;
 import java.util.Date;
 import java.util.Set;
 import java.util.TreeSet;
@@ -26,10 +22,10 @@ import static by.bsuir.sslcn.Constants.*;
 
 public class Server {
 
-    private static final String WRONG_COMMAND = "Wrong command!";
-    private static final String WRONG_COMMAND_ARGUMENTS = "Wrong command arguments!";
-    private static final String WORK_DIR = "D:\\Projects\\IdeaProjects\\Java\\SSLСN\\Lab_2\\Server\\res\\content\\";
-    private static final byte SERVER_WIN_VALUE = 5;
+    public static final String WRONG_COMMAND = "Wrong command!";
+    public static final String WRONG_COMMAND_ARGUMENTS = "Wrong command arguments!";
+    public static final String WORK_DIR = "D:\\Projects\\IdeaProjects\\Java\\SSLСN\\Lab_2\\Server\\res\\content\\";
+    public static final byte SERVER_WIN_VALUE = 5;
 
     private DatagramSocket serverSocket;
     private ClientInfo clientInfo = new ClientInfo();
@@ -50,7 +46,7 @@ public class Server {
     public void runServer(String[] args) throws IOException {
         boolean running = true;
 
-        serverSocket = new DatagramSocket(PORT, InetAddress.getByName("192.168.43.171"));
+        serverSocket = new DatagramSocket(PORT, InetAddress.getByName(LOCALHOST));
 
         byte[] receiveData = new byte[BUFFER_SIZE];
         byte[] sendData = new byte[BUFFER_SIZE];
@@ -183,7 +179,6 @@ public class Server {
         }
 
         RandomAccessFile rafFile = new RandomAccessFile(file, "r");
-        FileChannel fileChannel = rafFile.getChannel();
         byte[] buffer = new byte[BUFFER_SIZE];
 
         long length = rafFile.length();
@@ -230,7 +225,6 @@ public class Server {
 
         while (!MessageTransmitter.receiveMessage(serverSocket).fin) ;
 
-        fileChannel.close();
         rafFile.close();
 
         winMax = 1;

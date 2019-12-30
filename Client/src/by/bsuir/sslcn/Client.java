@@ -21,6 +21,7 @@ public class Client {
     private static final String WORK_DIR = "D:\\STUDY\\7 term\\SPOLKS\\Lab_2\\Client\\res\\content\\";
     private static final byte CLIENT_WIN_VALUE = 10;
     private static final int ATTEMPTS_MAX = 3;
+    public static final String COMMAND_EXIT = "exit";
     private DatagramSocket clientSocket;
     private ClientInfo clientInfo = new ClientInfo();
 
@@ -49,6 +50,10 @@ public class Client {
 
         while (running) {
             String userInput = inFromUser.readLine();
+
+            if (userInput.equalsIgnoreCase(COMMAND_EXIT)) {
+                break;
+            }
 
             Message sendMsg = new Message();
             sendMsg.data = userInput.getBytes();
@@ -157,17 +162,13 @@ public class Client {
         int attempts = 0;
         boolean isConnectionIssue = false;
         boolean isConnectionLost = false;
-        long timeout = LocalTime.of(0,0,18).getLong(ChronoField.MINUTE_OF_HOUR);
+        long timeout = LocalTime.of(0, 0, 18).getLong(ChronoField.MINUTE_OF_HOUR);
         LocalTime lastSuccess = null;
 
         clientSocket.setSoTimeout(1);
         while (!isConnectionLost && (!isFileEnd || !sentMessages.isEmpty())) {
             resendMissed(rafFile, buffer);
 
-            // как на сервере, только timeout 18 сек и после него попытка отправить несколько пакетов.
-            // Если 3 раза ничего - connection lost
-
-//            collectAcks();
             if (!collectAcks()) {
                 if (!isConnectionIssue) {
                     isConnectionIssue = true;
@@ -209,7 +210,7 @@ public class Client {
         }
         clientSocket.setSoTimeout(0);
 
-        if (!isConnectionLost){
+        if (!isConnectionLost) {
             MessageSender.sendFin(clientSocket, clientInfo);
 
             while (!MessageTransmitter.receiveMessage(clientSocket).fin) ;
