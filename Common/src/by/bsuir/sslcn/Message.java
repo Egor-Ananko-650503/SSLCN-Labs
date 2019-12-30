@@ -34,8 +34,11 @@ public class Message {
     }
 
     public static Message parseByteData(byte[] array) {
+        return parseByteData(ByteBuffer.wrap(array));
+    }
+
+    public static Message parseByteData(ByteBuffer byteBuffer) {
         Message msg = new Message();
-        ByteBuffer byteBuffer = ByteBuffer.wrap(array);
 
         msg.sequenceNumber = byteBuffer.getInt();
         msg.acknowledgmentNumber = byteBuffer.getInt();
@@ -43,9 +46,10 @@ public class Message {
         msg.win = byteBuffer.get();
         msg.fin = byteBuffer.get() == 1;
 
-        if (array.length > HEADER_SIZE) {
-            msg.data = new byte[array.length - HEADER_SIZE];
-            System.arraycopy(array, HEADER_SIZE, msg.data, 0, array.length - HEADER_SIZE);
+        if (byteBuffer.limit() > HEADER_SIZE) {
+            int dataLength = byteBuffer.limit() - HEADER_SIZE;
+            msg.data = new byte[dataLength];
+            System.arraycopy(byteBuffer.array(), HEADER_SIZE, msg.data, 0, dataLength);
         }
 
         return msg;
@@ -58,7 +62,12 @@ public class Message {
                 .put((byte) (ack ? 1 : 0))
                 .put(win)
                 .put((byte) (fin ? 1 : 0))
-                .put(data).array();
+                .put(data)
+                .array();
+    }
+
+    public ByteBuffer getByteBufferData() {
+        return ByteBuffer.wrap(getByteData());
     }
 
     @Override
